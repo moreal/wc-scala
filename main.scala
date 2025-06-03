@@ -25,53 +25,54 @@ case class Stats(
 )
 
 def getStats(iterator: Iterator[Char]): Stats = {
-    var lineCount = 0
-    var wordCount = 0
-    var bytesCount = 0
-    var charCount = 0
-    var maxLineBytesLength = 0
+    case class State(
+        lineCount: Int = 0,
+        wordCount: Int = 0,
+        bytesCount: Int = 0,
+        charCount: Int = 0,
+        maxLineBytesLength: Int = 0,
+        currentLineBytes: Int = 0,
+        prevChar: Option[Char] = None
+    )
 
-    var currentLine = new StringBuilder
-    var prevChar: Option[Char] = None
-
-    for (char <- iterator) {
-        charCount += 1
-        bytesCount += char.toString.getBytes.length
-        
-        if (char == '\n') {
-            lineCount += 1
-            val lineBytes = currentLine.toString.getBytes.length
-            maxLineBytesLength = math.max(maxLineBytesLength, lineBytes)
-            currentLine.clear()
-        } else {
-            currentLine.append(char)
-        }
-        
-        // Count words based on whitespace transitions
+    val finalState = iterator.foldLeft(State()) { (state, char) =>
+        val charBytes = char.toString.getBytes.length
+        val isNewLine = char == '\n'
         val isWhitespace = char.isWhitespace
-        prevChar match {
-            case Some(prev) if !prev.isWhitespace && isWhitespace =>
-                wordCount += 1
-            case _ =>
+        
+        val newLineCount = if (isNewLine) state.lineCount + 1 else state.lineCount
+        val newMaxLineBytes = if (isNewLine) 
+            math.max(state.maxLineBytesLength, state.currentLineBytes)
+        else 
+            state.maxLineBytesLength
+        val newCurrentLineBytes = if (isNewLine) 0 else state.currentLineBytes + charBytes
+        
+        val newWordCount = state.prevChar match {
+            case Some(prev) if !prev.isWhitespace && isWhitespace => state.wordCount + 1
+            case _ => state.wordCount
         }
         
-        prevChar = Some(char)
+        State(
+            lineCount = newLineCount,
+            wordCount = newWordCount,
+            bytesCount = state.bytesCount + charBytes,
+            charCount = state.charCount + 1,
+            maxLineBytesLength = newMaxLineBytes,
+            currentLineBytes = newCurrentLineBytes,
+            prevChar = Some(char)
+        )
     }
     
-    // Handle last line if it doesn't end with newline
-    if (currentLine.nonEmpty) {
-        val lineBytes = currentLine.toString.getBytes.length
-        maxLineBytesLength = math.max(maxLineBytesLength, lineBytes)
-    }
-    
-    // Count last word if input ends with non-whitespace
-    prevChar match {
-        case Some(char) if !char.isWhitespace =>
-            wordCount += 1
-        case _ =>
-    }
-
-    Stats(lineCount, wordCount, bytesCount, charCount, maxLineBytesLength)
+    // Handle last line and word
+    val adjustedMaxLineBytes = math.max(finalState.maxLineBytesLength, finalState.currentLineBytes)
+    val adjustedWordCount = finalState.wordCount + finalState.prevChar.map(c => if (!c.isWhitespace) 1 else 0).getOrElse(0)
+    Stats(
+        lineCount = finalState.lineCount,
+        wordCount = adjustedWordCount,
+        bytesCount = finalState.bytesCount,
+        charCount = finalState.charCount,
+        maxLineBytesLength = adjustedMaxLineBytes
+    )
 }
 
 @main
